@@ -56,6 +56,45 @@
         </div>
     </form>
 
+    @php
+        $activeFilters = [];
+        $searchValue = $filters['q'] ?? null;
+        $categoryId = $filters['category'] ?? null;
+        $tagId = $filters['tag'] ?? null;
+
+        if ($searchValue) {
+            $activeFilters[] = ['key' => 'q', 'label' => 'Search: ' . $searchValue];
+        }
+
+        if ($categoryId) {
+            $categoryLabel = $categories->firstWhere('id', (int) $categoryId)?->name;
+            if ($categoryLabel) {
+                $activeFilters[] = ['key' => 'category', 'label' => 'Category: ' . $categoryLabel];
+            }
+        }
+
+        if ($tagId) {
+            $tagLabel = $tags->firstWhere('id', (int) $tagId)?->name;
+            if ($tagLabel) {
+                $activeFilters[] = ['key' => 'tag', 'label' => 'Tag: ' . $tagLabel];
+            }
+        }
+    @endphp
+
+    @if ($activeFilters)
+        <div class="mt-4 flex flex-wrap gap-2">
+            @foreach ($activeFilters as $filter)
+                @php
+                    $query = request()->query();
+                    unset($query[$filter['key']]);
+                @endphp
+                <a class="badge" href="{{ route('links.index', $query) }}">
+                    {{ $filter['label'] }} ×
+                </a>
+            @endforeach
+        </div>
+    @endif
+
     <div class="mt-8 panel">
         @if ($links->isEmpty())
             <p class="text-sm text-muted">No links yet. Add your first one.</p>
