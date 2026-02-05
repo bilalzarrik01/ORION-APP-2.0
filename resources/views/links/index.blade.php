@@ -25,7 +25,7 @@
         <div class="grid gap-4 md:grid-cols-3">
             <div>
                 <x-input-label class="text-muted" for="q" value="Search title" />
-                <x-text-input id="q" name="q" type="text" class="mt-1 block w-full" value="{{ $filters['q'] ?? '' }}" />
+                <x-text-input id="q" name="q" type="text" class="mt-1 block w-full" value="{{ $filters['q'] ?? '' }}" aria-label="Search links by title" autocomplete="off" />
             </div>
             <div>
                 <x-input-label class="text-muted" for="category" value="Category" />
@@ -97,7 +97,14 @@
 
     <div class="mt-8 panel">
         @if ($links->isEmpty())
-            <p class="text-sm text-muted">No links yet. Add your first one.</p>
+            @if ($activeFilters)
+                <p class="text-sm text-muted">No links match your filters.</p>
+                <div class="mt-4">
+                    <a class="btn btn-secondary" href="{{ route('links.index') }}">Clear filters</a>
+                </div>
+            @else
+                <p class="text-sm text-muted">No links yet. Add your first one.</p>
+            @endif
         @else
             <div class="space-y-4">
                 @foreach ($links as $link)
