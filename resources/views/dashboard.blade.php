@@ -1,4 +1,4 @@
-<x-app-layout>
+﻿<x-app-layout>
     <x-slot name="header">
         <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -25,17 +25,19 @@
         <div class="mt-10 grid gap-6 lg:grid-cols-3">
             <div class="panel">
                 <p class="text-xs uppercase tracking-[0.3em] text-muted">Saved this week</p>
-                <p class="mt-3 font-display text-4xl">28</p>
+                <p class="mt-3 font-display text-4xl">{{ $linksThisWeek }}</p>
                 <p class="mt-2 text-sm text-muted">Curated links and documents added.</p>
             </div>
             <div class="panel">
                 <p class="text-xs uppercase tracking-[0.3em] text-muted">Active tags</p>
-                <p class="mt-3 font-display text-4xl">12</p>
+                <p class="mt-3 font-display text-4xl">{{ $tagsCount }}</p>
                 <p class="mt-2 text-sm text-muted">Research themes shaping your focus.</p>
             </div>
             <div class="panel">
                 <p class="text-xs uppercase tracking-[0.3em] text-muted">Momentum</p>
-                <p class="mt-3 font-display text-4xl">4 day</p>
+                <p class="mt-3 font-display text-4xl">
+                    {{ $streakDays }} {{ \Illuminate\Support\Str::plural('day', $streakDays) }}
+                </p>
                 <p class="mt-2 text-sm text-muted">Streak of daily captures.</p>
             </div>
         </div>
@@ -53,18 +55,19 @@
                 </div>
 
                 <div class="mt-6 space-y-4">
-                    <div class="panel-soft">
-                        <p class="text-sm font-semibold">Design systems audit</p>
-                        <p class="mt-1 text-xs text-muted">Tagged: UI, research · 2 hours ago</p>
-                    </div>
-                    <div class="panel-soft">
-                        <p class="text-sm font-semibold">SaaS onboarding teardown</p>
-                        <p class="mt-1 text-xs text-muted">Tagged: growth · Yesterday</p>
-                    </div>
-                    <div class="panel-soft">
-                        <p class="text-sm font-semibold">Product brief: Odin 2.0</p>
-                        <p class="mt-1 text-xs text-muted">Tagged: strategy · 2 days ago</p>
-                    </div>
+                    @forelse ($recentLinks as $link)
+                        <div class="panel-soft">
+                            <p class="text-sm font-semibold">{{ $link->title }}</p>
+                            <p class="mt-1 text-xs text-muted">
+                                @if ($link->tags->isNotEmpty())
+                                    Tagged: {{ $link->tags->pluck('name')->implode(', ') }} ·
+                                @endif
+                                {{ $link->created_at->diffForHumans() }}
+                            </p>
+                        </div>
+                    @empty
+                        <p class="text-sm text-muted">No recent activity yet.</p>
+                    @endforelse
                 </div>
             </div>
 
@@ -111,3 +114,4 @@
         </div>
     </div>
 </x-app-layout>
+
