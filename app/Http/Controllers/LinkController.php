@@ -2,26 +2,31 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\LinkActionOccurred;
+use App\Http\Requests\StoreLinkRequest;
+use App\Http\Requests\UpdateLinkRequest;
 use App\Models\Category;
 use App\Models\Link;
 use App\Models\Tag;
-use Illuminate\Http\Request;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\Rule;
 
 class LinkController extends Controller
 {
     public function index()
     {
+        $user = Auth::user();
+
         $filters = [
             'q' => request()->query('q'),
             'category' => request()->query('category'),
             'tag' => request()->query('tag'),
+            'favorites' => request()->boolean('favorites'),
         ];
 
-        $links = Link::query()
-            ->whereHas('category', fn ($query) => $query->where('user_id', Auth::id()))
+        $links = $this->accessibleLinksQuery($user)
             ->with(['category', 'tags'])
+            ->withExists(['favoredBy as is_favorite' => fn ($query) => $query->where('users.id', $user->id)])
             ->when($filters['q'], function ($query, $q) {
                 $query->where('title', 'like', '%' . $q . '%');
             })
@@ -31,12 +36,24 @@ class LinkController extends Controller
             ->when($filters['tag'], function ($query, $tagId) {
                 $query->whereHas('tags', fn ($tagQuery) => $tagQuery->whereKey($tagId));
             })
+            ->when($filters['favorites'], function ($query) use ($user) {
+                $query->whereHas('favoredBy', fn ($favQuery) => $favQuery->where('users.id', $user->id));
+            })
             ->latest()
             ->get();
 
-        $categories = $this->userCategories();
+        $categories = $this->userCategories($user);
         $tags = Tag::query()
-            ->whereHas('links.category', fn ($query) => $query->where('user_id', Auth::id()))
+            ->whereHas('links', function ($query) use ($user) {
+                if ($user->isAdmin()) {
+                    return;
+                }
+
+                $query->where(function ($nested) use ($user) {
+                    $nested->whereHas('category', fn ($categoryQuery) => $categoryQuery->where('user_id', $user->id))
+                        ->orWhereHas('sharedUsers', fn ($sharedQuery) => $sharedQuery->where('users.id', $user->id));
+                });
+            })
             ->orderBy('name')
             ->get();
 
@@ -45,14 +62,15 @@ class LinkController extends Controller
 
     public function create()
     {
-        $categories = $this->userCategories();
+        $this->authorize('create', Link::class);
+        $categories = $this->userCategories(Auth::user());
 
         return view('links.create', compact('categories'));
     }
 
-    public function store(Request $request)
+    public function store(StoreLinkRequest $request)
     {
-        $validated = $this->validateLink($request);
+        $validated = $request->validated();
 
         $link = Link::create([
             'title' => $validated['title'],
@@ -61,77 +79,87 @@ class LinkController extends Controller
         ]);
 
         $link->tags()->sync($this->resolveTagIds($validated['tags'] ?? ''));
+        event(new LinkActionOccurred(Auth::user(), $link, 'created'));
 
         return redirect()
             ->route('links.index')
             ->with('status', 'Link created.');
     }
 
-    public function edit(string $id)
+    public function edit(Link $link)
     {
-        $link = $this->findUserLink($id);
-        $categories = $this->userCategories();
-        $tags = $link->tags->pluck('name')->implode(', ');
+        $this->authorize('update', $link);
 
-        return view('links.edit', compact('link', 'categories', 'tags'));
+        $user = Auth::user();
+        $isOwner = $link->isOwnedBy($user);
+        $canShare = $user->can('share', $link);
+        $categories = $isOwner ? $this->userCategories($user) : collect();
+        $tags = $link->tags->pluck('name')->implode(', ');
+        $shares = $canShare ? $link->sharedUsers()->orderBy('name')->get() : collect();
+        $users = $canShare
+            ? User::query()->whereKeyNot($user->id)->orderBy('name')->get()
+            : collect();
+
+        return view('links.edit', compact('link', 'categories', 'tags', 'isOwner', 'canShare', 'shares', 'users'));
     }
 
-    public function update(Request $request, string $id)
+    public function update(UpdateLinkRequest $request, Link $link)
     {
-        $link = $this->findUserLink($id);
-        $validated = $this->validateLink($request);
+        $validated = $request->validated();
 
-        $link->update([
+        $payload = [
             'title' => $validated['title'],
             'url' => $validated['url'],
-            'category_id' => $validated['category_id'],
-        ]);
+        ];
+        if (array_key_exists('category_id', $validated)) {
+            $payload['category_id'] = $validated['category_id'];
+        }
+
+        $link->update($payload);
 
         $link->tags()->sync($this->resolveTagIds($validated['tags'] ?? ''));
+        event(new LinkActionOccurred(Auth::user(), $link, 'updated'));
 
         return redirect()
             ->route('links.index')
             ->with('status', 'Link updated.');
     }
 
-    public function destroy(string $id)
+    public function destroy(Link $link)
     {
-        $link = $this->findUserLink($id);
+        $this->authorize('delete', $link);
         $link->delete();
+        event(new LinkActionOccurred(Auth::user(), $link, 'deleted'));
 
         return redirect()
             ->route('links.index')
             ->with('status', 'Link deleted.');
     }
 
-    private function userCategories()
+    private function userCategories(User $user)
     {
-        return Category::query()
-            ->where('user_id', Auth::id())
+        $query = Category::query();
+        if (! $user->isAdmin()) {
+            $query->where('user_id', $user->id);
+        }
+
+        return $query
             ->orderBy('name')
             ->get();
     }
 
-    private function findUserLink(string $id): Link
+    private function accessibleLinksQuery(User $user)
     {
-        return Link::query()
-            ->whereKey($id)
-            ->whereHas('category', fn ($query) => $query->where('user_id', Auth::id()))
-            ->with('tags')
-            ->firstOrFail();
-    }
+        $query = Link::query();
 
-    private function validateLink(Request $request): array
-    {
-        return $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-            'url' => ['required', 'url', 'max:2048'],
-            'category_id' => [
-                'required',
-                Rule::exists('categories', 'id')->where('user_id', Auth::id()),
-            ],
-            'tags' => ['nullable', 'string', 'max:255'],
-        ]);
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        return $query->where(function ($nested) use ($user) {
+            $nested->whereHas('category', fn ($categoryQuery) => $categoryQuery->where('user_id', $user->id))
+                ->orWhereHas('sharedUsers', fn ($sharedQuery) => $sharedQuery->where('users.id', $user->id));
+        });
     }
 
     private function resolveTagIds(string $rawTags): array
