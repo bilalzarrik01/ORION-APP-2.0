@@ -2,17 +2,25 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreCategoryRequest;
+use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class CategoryController extends Controller
 {
     public function index()
     {
-        $categories = Category::query()
-            ->where('user_id', Auth::id())
+        $user = Auth::user();
+
+        $query = Category::query();
+        if (! $user->isAdmin()) {
+            $query->where('user_id', $user->id);
+        }
+
+        $categories = $query
             ->withCount('links')
+            ->with('user')
             ->orderBy('name')
             ->get();
 
@@ -21,14 +29,14 @@ class CategoryController extends Controller
 
     public function create()
     {
+        $this->authorize('create', Category::class);
+
         return view('categories.create');
     }
 
-    public function store(Request $request)
+    public function store(StoreCategoryRequest $request)
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-        ]);
+        $validated = $request->validated();
 
         Category::create([
             'name' => $validated['name'],
@@ -40,43 +48,29 @@ class CategoryController extends Controller
             ->with('status', 'Category created.');
     }
 
-    public function edit(string $id)
+    public function edit(Category $category)
     {
-        $category = $this->findUserCategory($id);
+        $this->authorize('update', $category);
 
         return view('categories.edit', compact('category'));
     }
 
-    public function update(Request $request, string $id)
+    public function update(UpdateCategoryRequest $request, Category $category)
     {
-        $category = $this->findUserCategory($id);
-
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-        ]);
-
-        $category->update($validated);
+        $category->update($request->validated());
 
         return redirect()
             ->route('categories.index')
             ->with('status', 'Category updated.');
     }
 
-    public function destroy(string $id)
+    public function destroy(Category $category)
     {
-        $category = $this->findUserCategory($id);
+        $this->authorize('delete', $category);
         $category->delete();
 
         return redirect()
             ->route('categories.index')
             ->with('status', 'Category deleted.');
-    }
-
-    private function findUserCategory(string $id): Category
-    {
-        return Category::query()
-            ->whereKey($id)
-            ->where('user_id', Auth::id())
-            ->firstOrFail();
     }
 }

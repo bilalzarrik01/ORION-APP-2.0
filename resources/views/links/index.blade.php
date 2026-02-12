@@ -9,8 +9,14 @@
                 </p>
             </div>
             <div class="flex flex-wrap gap-3">
-                <a class="btn btn-secondary" href="{{ route('categories.index') }}">Manage categories</a>
-                <a class="btn btn-primary" href="{{ route('links.create') }}">Add link</a>
+                @if (auth()->user()->can('create', \App\Models\Link::class))
+                    <a class="btn btn-primary" href="{{ route('links.create') }}">Add link</a>
+                    <a class="btn btn-secondary" href="{{ route('categories.index') }}">Manage categories</a>
+                @endif
+                <a class="btn btn-secondary" href="{{ route('links.trash') }}">Trash</a>
+                @if (auth()->user()->isAdmin())
+                    <a class="btn btn-secondary" href="{{ route('activity-logs.index') }}">Activity logs</a>
+                @endif
             </div>
         </div>
     </x-slot>
@@ -22,10 +28,10 @@
     @endif
 
     <form class="mt-6 panel-soft" method="GET" action="{{ route('links.index') }}">
-        <div class="grid gap-4 md:grid-cols-3">
+        <div class="grid gap-4 md:grid-cols-4">
             <div>
                 <x-input-label class="text-muted" for="q" value="Search title" />
-                <x-text-input id="q" name="q" type="text" class="mt-1 block w-full" value="{{ $filters['q'] ?? '' }}" aria-label="Search links by title" autocomplete="off" />
+                <x-text-input id="q" name="q" type="text" class="mt-1 block w-full" value="{{ $filters['q'] ?? '' }}" />
             </div>
             <div>
                 <x-input-label class="text-muted" for="category" value="Category" />
@@ -49,6 +55,12 @@
                     @endforeach
                 </select>
             </div>
+            <div class="flex items-end">
+                <label class="inline-flex items-center gap-2 text-sm text-muted">
+                    <input type="checkbox" name="favorites" value="1" @checked($filters['favorites'] ?? false)>
+                    Favorites only
+                </label>
+            </div>
         </div>
         <div class="mt-4 flex flex-wrap items-center gap-3">
             <button type="submit" class="btn btn-primary">Filter</button>
@@ -56,55 +68,9 @@
         </div>
     </form>
 
-    @php
-        $activeFilters = [];
-        $searchValue = $filters['q'] ?? null;
-        $categoryId = $filters['category'] ?? null;
-        $tagId = $filters['tag'] ?? null;
-
-        if ($searchValue) {
-            $activeFilters[] = ['key' => 'q', 'label' => 'Search: ' . $searchValue];
-        }
-
-        if ($categoryId) {
-            $categoryLabel = $categories->firstWhere('id', (int) $categoryId)?->name;
-            if ($categoryLabel) {
-                $activeFilters[] = ['key' => 'category', 'label' => 'Category: ' . $categoryLabel];
-            }
-        }
-
-        if ($tagId) {
-            $tagLabel = $tags->firstWhere('id', (int) $tagId)?->name;
-            if ($tagLabel) {
-                $activeFilters[] = ['key' => 'tag', 'label' => 'Tag: ' . $tagLabel];
-            }
-        }
-    @endphp
-
-    @if ($activeFilters)
-        <div class="mt-4 flex flex-wrap gap-2">
-            @foreach ($activeFilters as $filter)
-                @php
-                    $query = request()->query();
-                    unset($query[$filter['key']]);
-                @endphp
-                <a class="badge" href="{{ route('links.index', $query) }}">
-                    {{ $filter['label'] }} ×
-                </a>
-            @endforeach
-        </div>
-    @endif
-
     <div class="mt-8 panel">
         @if ($links->isEmpty())
-            @if ($activeFilters)
-                <p class="text-sm text-muted">No links match your filters.</p>
-                <div class="mt-4">
-                    <a class="btn btn-secondary" href="{{ route('links.index') }}">Clear filters</a>
-                </div>
-            @else
-                <p class="text-sm text-muted">No links yet. Add your first one.</p>
-            @endif
+            <p class="text-sm text-muted">No links found.</p>
         @else
             <div class="space-y-4">
                 @foreach ($links as $link)
@@ -115,7 +81,7 @@
                                 {{ $link->url }}
                             </a>
                             <div class="mt-2 text-xs text-muted">
-                                Category: {{ $link->category?->name ?? '—' }}
+                                Category: {{ $link->category?->name ?? '-' }}
                             </div>
                             @if ($link->tags->isNotEmpty())
                                 <div class="mt-3 badge-row">
@@ -126,12 +92,30 @@
                             @endif
                         </div>
                         <div class="flex flex-wrap items-center gap-3">
-                            <a class="btn btn-secondary" href="{{ route('links.edit', $link) }}">Edit</a>
-                            <form method="POST" action="{{ route('links.destroy', $link) }}" onsubmit="return confirm('Delete this link?');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-secondary">Delete</button>
-                            </form>
+                            @if ($link->is_favorite)
+                                <form method="POST" action="{{ route('links.favorite.destroy', $link) }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-secondary">Unfavorite</button>
+                                </form>
+                            @else
+                                <form method="POST" action="{{ route('links.favorite.store', $link) }}">
+                                    @csrf
+                                    <button type="submit" class="btn btn-secondary">Favorite</button>
+                                </form>
+                            @endif
+
+                            @can('update', $link)
+                                <a class="btn btn-secondary" href="{{ route('links.edit', $link) }}">Edit</a>
+                            @endcan
+
+                            @can('delete', $link)
+                                <form method="POST" action="{{ route('links.destroy', $link) }}" onsubmit="return confirm('Delete this link?');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-secondary">Delete</button>
+                                </form>
+                            @endcan
                         </div>
                     </div>
                 @endforeach
@@ -139,3 +123,4 @@
         @endif
     </div>
 </x-app-layout>
+

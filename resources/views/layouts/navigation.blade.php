@@ -15,6 +15,11 @@
             <x-nav-link :href="route('links.index')" :active="request()->routeIs('links.*')">
                 {{ __('Links') }}
             </x-nav-link>
+            @if (Auth::user()->isAdmin())
+                <x-nav-link :href="route('activity-logs.index')" :active="request()->routeIs('activity-logs.*')">
+                    {{ __('Activity Logs') }}
+                </x-nav-link>
+            @endif
             <x-dropdown align="right" width="48">
                 <x-slot name="trigger">
                     <button class="nav-btn">
@@ -58,6 +63,11 @@
             <x-responsive-nav-link :href="route('links.index')" :active="request()->routeIs('links.*')">
                 {{ __('Links') }}
             </x-responsive-nav-link>
+            @if (Auth::user()->isAdmin())
+                <x-responsive-nav-link :href="route('activity-logs.index')" :active="request()->routeIs('activity-logs.*')">
+                    {{ __('Activity Logs') }}
+                </x-responsive-nav-link>
+            @endif
             <x-responsive-nav-link :href="route('profile.edit')">
                 {{ __('Profile') }}
             </x-responsive-nav-link>
