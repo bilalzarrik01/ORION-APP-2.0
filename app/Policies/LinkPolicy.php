@@ -33,12 +33,10 @@ class LinkPolicy
 
     public function update(User $user, Link $link): bool
     {
-        if ($user->isViewer()) {
-            return false;
-        }
-
+        // Viewers cannot edit their own resources, but can be granted edit access
+        // on a shared link via the share permission.
         if ($link->isOwnedBy($user)) {
-            return true;
+            return ! $user->isViewer();
         }
 
         return $link->sharedUsers()
@@ -67,4 +65,3 @@ class LinkPolicy
         return ! $user->isViewer() && $link->isOwnedBy($user);
     }
 }
-
